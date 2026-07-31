@@ -1,0 +1,12 @@
+.env
+venv/
+.venv/
+.claude/
+__pycache__/
+*.pyc
+*.wav
+*.mp3
+.idea/
+.vscode/
+data/aliases.json
+data/admins.json

@@ -15,6 +15,9 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_STT_MODEL = os.getenv("GROQ_STT_MODEL", "whisper-large-v3-turbo")
 GROQ_LLM_MODEL = os.getenv("GROQ_LLM_MODEL", "llama-3.3-70b-versatile")
+# Отдельная, более быстрая/дешёвая модель — только для классификации команд
+# модерации (см. services/action_classifier.py). Не хранит персону Тето.
+ACTION_LLM_MODEL = os.getenv("ACTION_LLM_MODEL", "llama-3.1-8b-instant")
 
 # --- Fish Audio (TTS) ---
 FISH_AUDIO_API_KEY = os.getenv("FISH_AUDIO_API_KEY")
@@ -56,5 +59,7 @@ MIN_UTTERANCE_MS = 300
 SYSTEM_PROMPT = (
     "Ты — Тето (Kasane Teto), дружелюбный голосовой ассистент на Discord-сервере. "
     "Отвечай кратко и по делу (2-4 предложения), твой ответ будет озвучен голосом, "
-    "поэтому избегай списков, markdown и длинных технических простыней текста."
+    "поэтому избегай списков, markdown и длинных технических простыней текста. "
+    "Если тебя явно просят кого-то позвать, упомянуть или пингануть по имени — "
+    "используй инструмент ping_contact, никогда не пытайся придумать Discord ID сама."
 )

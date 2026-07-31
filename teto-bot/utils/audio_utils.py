@@ -65,5 +65,8 @@ def play_bytes_in_voice(voice_client: discord.VoiceClient, audio_bytes: bytes, s
         if after:
             after(error)
 
+    if voice_client.is_playing():
+        voice_client.stop()
+
     source = discord.FFmpegPCMAudio(tmp.name)
     voice_client.play(source, after=_cleanup)
