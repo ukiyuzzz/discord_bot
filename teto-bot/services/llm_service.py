@@ -8,13 +8,31 @@ ID подставляет наш код из services/alias_service.py.
 """
 import json
 
-from groq import Groq
+try:
+    from groq import Groq
+except Exception as exc:  # pragma: no cover - зависит от окружения
+    Groq = None
+    _IMPORT_ERROR = exc
+else:
+    _IMPORT_ERROR = None
 
 from config import GROQ_API_KEY, GROQ_LLM_MODEL, SYSTEM_PROMPT
 from memory import conversation_store
 from services import alias_service
 
-_client = Groq(api_key=GROQ_API_KEY)
+_client = None
+
+
+def _get_client():
+    global _client
+    if _client is None:
+        if Groq is None:
+            raise RuntimeError(f"Не удалось импортировать Groq-клиент: {_IMPORT_ERROR}") from _IMPORT_ERROR
+        try:
+            _client = Groq(api_key=GROQ_API_KEY)
+        except Exception as exc:
+            raise RuntimeError(f"Не удалось инициализировать Groq-клиент: {exc}") from exc
+    return _client
 
 TOOLS = [
     {
@@ -61,7 +79,7 @@ def ask(channel_id: int, question: str, author_name: str | None = None) -> str:
     # позвать инструмент ещё раз на "финальном" шаге.
     message = None
     for _ in range(5):  # защита от зацикливания
-        response = _client.chat.completions.create(
+        response = _get_client().chat.completions.create(
             model=GROQ_LLM_MODEL,
             messages=messages,
             tools=TOOLS,

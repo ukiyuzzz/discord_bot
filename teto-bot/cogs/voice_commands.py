@@ -15,27 +15,38 @@ class VoiceCommands(commands.Cog):
     def __init__(self, bot: discord.Bot):
         self.bot = bot
 
+    async def _reply(self, ctx: discord.ApplicationContext, content: str):
+        try:
+            await ctx.followup.send(content)
+        except Exception:
+            await ctx.respond(content)
+
     @discord.slash_command(name="join", description="Тето заходит в твой голосовой канал")
     async def join(self, ctx: discord.ApplicationContext):
         # Discord даёт только 3 секунды на первый ответ на interaction.
         # Подключение к voice-каналу может занять дольше — поэтому сразу
         # "откладываем" ответ (defer), а реальный текст отправляем позже
-        # через ctx.respond(), у которого после defer() лимита в 3 секунды уже нет.
+        # через followup.send, который корректно работает после defer().
         await ctx.defer()
 
         if ctx.author.voice is None or ctx.author.voice.channel is None:
-            await ctx.respond("Зайди сначала в голосовой канал, а потом позови меня 🎤")
+            await self._reply(ctx, "Зайди сначала в голосовой канал, а потом позови меня 🎤")
             return
 
         channel = ctx.author.voice.channel
 
-        if ctx.voice_client is not None:
-            await ctx.voice_client.move_to(channel)
-        else:
-            await channel.connect()
+        try:
+            if ctx.voice_client is not None:
+                await ctx.voice_client.move_to(channel)
+            else:
+                await channel.connect()
+        except Exception as exc:
+            await self._reply(ctx, f"Не смогла зайти в канал: {exc}")
+            return
 
-        await ctx.respond(
-            f"Зашла в **{channel.name}**! Пришли голосовое сообщение в любой текстовый канал — отвечу здесь голосом."
+        await self._reply(
+            ctx,
+            f"Зашла в **{channel.name}**! Пришли голосовое сообщение в любой текстовый канал — отвечу здесь голосом.",
         )
 
     @discord.slash_command(name="leave", description="Тето выходит из голосового канала")
@@ -43,13 +54,18 @@ class VoiceCommands(commands.Cog):
         await ctx.defer()
 
         if ctx.voice_client is None:
-            await ctx.respond("Я и так не в голосовом канале.")
+            await self._reply(ctx, "Я и так не в голосовом канале.")
             return
 
         channel_id = ctx.voice_client.channel.id
-        await ctx.voice_client.disconnect()
+        try:
+            await ctx.voice_client.disconnect()
+        except Exception as exc:
+            await self._reply(ctx, f"Не смогла выйти из канала: {exc}")
+            return
+
         conversation_store.clear_history(channel_id)
-        await ctx.respond("Вышла из канала, до встречи! 👋")
+        await self._reply(ctx, "Вышла из канала, до встречи! 👋")
 
 
 def setup(bot: discord.Bot):

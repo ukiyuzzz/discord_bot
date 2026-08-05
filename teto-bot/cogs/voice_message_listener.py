@@ -17,11 +17,20 @@
 """
 import asyncio
 import io
+from datetime import timedelta
 
 import discord
 from discord.ext import commands
 
-from services import stt_service, llm_service, tts_service, action_classifier, permission_service, alias_service
+from services import (
+    stt_service,
+    llm_service,
+    tts_service,
+    action_classifier,
+    permission_service,
+    alias_service,
+    moderation_parser,
+)
 from utils import audio_utils
 
 AUDIO_EXTENSIONS = (".ogg", ".mp3", ".wav", ".m4a", ".webm", ".oga")
@@ -102,7 +111,15 @@ class VoiceMessageListener(commands.Cog):
             return True
 
         if action_name is None:
-            return False
+            target_name, duration_seconds = moderation_parser.parse_timeout_request(text)
+            if target_name is not None or duration_seconds is not None:
+                action_name = "timeout_member"
+                args = {
+                    "target_name": target_name or "",
+                    "duration_minutes": int(duration_seconds // 60) if duration_seconds is not None else None,
+                }
+            else:
+                return False
 
         target_name = args.get("target_name", "")
         try:
@@ -141,6 +158,30 @@ class VoiceMessageListener(commands.Cog):
                 role = await message.guild.create_role(name=role_name, permissions=discord.Permissions.none())
                 await target.add_roles(role)
                 await message.channel.send(f"Создала роль «{role_name}» и выдала её {target.mention}.")
+
+            elif action_name == "timeout_member":
+                duration_minutes = args.get("duration_minutes")
+                if duration_minutes is None:
+                    await message.channel.send(
+                        "Не поняла, на сколько времени отправить в тайм-аут — укажи число минут."
+                    )
+                    return True
+
+                duration_seconds = int(duration_minutes) * 60
+                reason = args.get("reason") or "По запросу администратора"
+                timeout_until = discord.utils.utcnow() + timedelta(seconds=duration_seconds)
+
+                if hasattr(target, "timeout_until"):
+                    await target.timeout_until(until=timeout_until, reason=reason)
+                elif hasattr(target, "timeout_for"):
+                    await target.timeout_for(duration=timedelta(seconds=duration_seconds), reason=reason)
+                else:
+                    await message.channel.send("У этой версии Discord API нет поддержки тайм-аута для участников.")
+                    return True
+
+                await message.channel.send(
+                    f"Отправила {target.mention} в тайм-аут на {duration_minutes} минут. Причина: {reason}"
+                )
 
             print(f"[Модерация] {message.author} запросил '{action_name}' над {target} в #{message.channel}")
 
@@ -185,10 +226,10 @@ class VoiceMessageListener(commands.Cog):
         voice_client = discord.utils.get(self.bot.voice_clients, guild=message.guild)
         if voice_client and voice_client.is_connected():
             audio_utils.play_bytes_in_voice(voice_client, audio_bytes)
-            await message.channel.send(f"🗣️ {answer}")
+            await message.channel.send(answer)
         else:
             await message.channel.send(
-                content=f"🗣️ {answer}",
+                content=answer,
                 file=discord.File(io.BytesIO(audio_bytes), filename="teto_answer.mp3"),
             )
 

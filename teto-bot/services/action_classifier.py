@@ -13,11 +13,29 @@
 """
 import json
 
-from groq import Groq
+try:
+    from groq import Groq
+except Exception as exc:  # pragma: no cover - зависит от окружения
+    Groq = None
+    _IMPORT_ERROR = exc
+else:
+    _IMPORT_ERROR = None
 
 from config import GROQ_API_KEY, ACTION_LLM_MODEL
 
-_client = Groq(api_key=GROQ_API_KEY)
+_client = None
+
+
+def _get_client():
+    global _client
+    if _client is None:
+        if Groq is None:
+            raise RuntimeError(f"Не удалось импортировать Groq-клиент: {_IMPORT_ERROR}") from _IMPORT_ERROR
+        try:
+            _client = Groq(api_key=GROQ_API_KEY)
+        except Exception as exc:
+            raise RuntimeError(f"Не удалось инициализировать Groq-клиент: {exc}") from exc
+    return _client
 
 TOOLS = [
     {
@@ -79,15 +97,31 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "timeout_member",
+            "description": "Отправить пользователя в тайм-аут на определённое время",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target_name": {"type": "string", "description": "Имя/ник упомянутого пользователя"},
+                    "duration_minutes": {"type": "integer", "description": "Длительность тайм-аута в минутах"},
+                    "reason": {"type": "string", "description": "Причина тайм-аута, если она указана"},
+                },
+                "required": ["target_name", "duration_minutes"],
+            },
+        },
+    },
 ]
 
 SYSTEM_PROMPT = (
     "Ты классификатор команд модерации Discord-сервера. Тебе дают сообщение "
     "от администратора сервера. Если это явная просьба выполнить модерационное "
-    "действие (отключить от войса, кикнуть с сервера, забанить, выдать роль) — "
-    "вызови СООТВЕТСТВУЮЩУЮ функцию с извлечёнными параметрами. Если сообщение "
-    "не является явной командой модерации (обычный вопрос, разговор, "
-    "неоднозначная фраза) — не вызывай никакую функцию."
+    "действие (отключить от войса, кикнуть с сервера, забанить, выдать роль, "
+    "отправить в тайм-аут) — вызови СООТВЕТСТВУЮЩУЮ функцию с извлечёнными "
+    "параметрами. Если сообщение не является явной командой модерации "
+    "(обычный вопрос, разговор, неоднозначная фраза) — не вызывай никакую функцию."
 )
 
 
@@ -96,17 +130,21 @@ def classify(text: str):
     Возвращает (action_name, args_dict), если распознана явная команда
     модерации, иначе (None, None).
     """
-    response = _client.chat.completions.create(
-        model=ACTION_LLM_MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": text},
-        ],
-        tools=TOOLS,
-        tool_choice="auto",
-        temperature=0,
-        max_tokens=200,
-    )
+    try:
+        response = _get_client().chat.completions.create(
+            model=ACTION_LLM_MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": text},
+            ],
+            tools=TOOLS,
+            tool_choice="auto",
+            temperature=0,
+            max_tokens=200,
+        )
+    except Exception:
+        return None, None
+
     message = response.choices[0].message
 
     if not message.tool_calls:

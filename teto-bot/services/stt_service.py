@@ -5,11 +5,29 @@
 """
 import io
 
-from groq import Groq
+try:
+    from groq import Groq
+except Exception as exc:  # pragma: no cover - зависит от окружения
+    Groq = None
+    _IMPORT_ERROR = exc
+else:
+    _IMPORT_ERROR = None
 
 from config import GROQ_API_KEY, GROQ_STT_MODEL
 
-_client = Groq(api_key=GROQ_API_KEY)
+_client = None
+
+
+def _get_client():
+    global _client
+    if _client is None:
+        if Groq is None:
+            raise RuntimeError(f"Не удалось импортировать Groq-клиент: {_IMPORT_ERROR}") from _IMPORT_ERROR
+        try:
+            _client = Groq(api_key=GROQ_API_KEY)
+        except Exception as exc:
+            raise RuntimeError(f"Не удалось инициализировать Groq-клиент: {exc}") from exc
+    return _client
 
 
 def transcribe(wav_bytes: bytes, language_hint: str | None = None) -> str:
@@ -30,7 +48,7 @@ def transcribe(wav_bytes: bytes, language_hint: str | None = None) -> str:
     if language_hint:
         kwargs["language"] = language_hint
 
-    result = _client.audio.transcriptions.create(**kwargs)
+    result = _get_client().audio.transcriptions.create(**kwargs)
 
     # В зависимости от response_format SDK может вернуть строку или объект с .text
     if isinstance(result, str):
